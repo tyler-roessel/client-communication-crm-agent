@@ -8,6 +8,7 @@ The public code uses deterministic rules and local JSON. It makes no model calls
 
 - Whole-word, clause-scoped rules recognize explicit requests and concerns. Negated requests and common resolution phrases are suppressed.
 - Recommendations retain source evidence and require review. No actionable signal means no stage-change recommendation.
+- Derived analysis is bound to its source records; a different account's analysis cannot be reused. Non-stage signals retain useful notes while omitting stage fields entirely.
 - Mapping previews require one explicit account identity. Missing identity holds the plan; mixed accounts are rejected.
 - Recommendation IDs hash account identity and sorted source-event identities. Reordering input preserves IDs; different accounts or source IDs produce different IDs.
 - Supply immutable `communication_id` values. Content fallback cannot distinguish identical source events.

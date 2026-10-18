@@ -22,6 +22,7 @@ def communications(text, account="account-a", event="event-1"):
     "We do not need integration.",
     "Our integration is not required.",
     "The proposal is blocked on budget.",
+    "There is no API issue.",
 ])
 def test_non_actionable_language_does_not_advance_crm(text):
     analysis = analyze_threads(communications(text))
@@ -35,6 +36,27 @@ def test_resolved_clause_does_not_hide_a_separate_active_request():
     ))
     assert analysis["signals"] == ["proposal_requested"]
     assert analysis["evidence"]["proposal_requested"] == ["please send a proposal"]
+
+
+def test_resolution_and_negation_do_not_hide_independent_requests():
+    assert analyze_threads(communications("SSO is resolved, and API mapping is blocked"))["signals"] == ["technical_blocker"]
+    assert analyze_threads(communications("We don't need a proposal, please send pricing"))["signals"] == ["proposal_requested"]
+
+
+def test_non_stage_signals_never_map_no_change_into_a_status_field():
+    items = communications("Feedback: onboarding felt confusing.")
+    plan = build_integration_plan(analyze_threads(items), items, ["salesforce", "hubspot", "attio", "warehouse"])
+    assert plan["writes"]
+    for write in plan["writes"]:
+        assert "no_change" not in write["payload"].values()
+        assert "recommended_status" not in write["field_map"].values()
+
+
+def test_analysis_from_another_account_cannot_be_attached_to_this_account():
+    first = communications("Please send pricing.", account="account-a")
+    second = communications("Please send pricing.", account="account-b")
+    with pytest.raises(ValueError, match="does not match"):
+        build_integration_plan(analyze_threads(first), second)
 
 
 def test_normalization_analysis_and_mapping_are_account_aware_and_repeatable():

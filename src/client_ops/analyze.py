@@ -1,6 +1,15 @@
 """Conservative rules for a local reference sample; no model inference occurs."""
 
 import re
+from .context import source_digest
+
+
+CLAUSE_SPLIT = re.compile(
+    r"[.!?;]+|\b(?:but|however)\b|"
+    r",\s*(?:and\s+)?(?=(?:please|we|they|i|need|needs|waiting|api|sso|integration)\b)|"
+    r"\band\s+(?=(?:please|we|they|i|need|needs|waiting|api|sso|integration)\b)",
+    re.IGNORECASE,
+)
 
 
 SIGNAL_RULES = {
@@ -38,7 +47,7 @@ def analyze_threads(communications):
     for item in sorted(communications, key=lambda item: tuple(
         item.get(key, "") for key in ("timestamp", "communication_id", "source", "speaker", "text")
     )):
-        for clause in re.split(r"[.!?;]+|\bbut\b|\bhowever\b", item["text"], flags=re.IGNORECASE):
+        for clause in CLAUSE_SPLIT.split(item["text"]):
             clause = clause.strip()
             if not clause:
                 continue
@@ -62,6 +71,8 @@ def analyze_threads(communications):
         "evidence": evidence_by_signal,
         "analysis_method": "deterministic_rules",
         "needs_human_review": True,
+        "account_id": next(iter(account_ids), None),
+        "source_digest": source_digest(communications),
     }
 
 

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from .context import source_digest
 
 
 SYSTEM_ALIASES = {
@@ -97,6 +98,8 @@ def normalize_system_name(name):
 
 
 def build_integration_plan(analysis, communications, requested_systems=None, *, account_id=None):
+    if analysis.get("source_digest") != source_digest(communications):
+        raise ValueError("analysis does not match the supplied source records")
     if account_id is not None and (not isinstance(account_id, str) or not account_id.strip()):
         raise ValueError("account_id must be a non-empty string")
     supplied_ids = {item["account_id"] for item in communications if item.get("account_id")}
@@ -152,6 +155,7 @@ def _infer_destinations(analysis, communications):
 
 
 def _build_write(system, contract, analysis, communications, account_id):
+    payload = _payload_for(contract, analysis, communications)
     return {
         "destination": system,
         "object": contract["object"],
@@ -159,8 +163,8 @@ def _build_write(system, contract, analysis, communications, account_id):
         "id_field": contract["id_field"],
         "account_id": account_id,
         "external_id": _external_id(communications, account_id=account_id),
-        "field_map": contract["field_map"],
-        "payload": _payload_for(contract, analysis, communications),
+        "field_map": {target: source for target, source in contract["field_map"].items() if target in payload},
+        "payload": payload,
     }
 
 
@@ -177,7 +181,10 @@ def _payload_for(contract, analysis, communications):
         "text": first["text"],
         "signals": ", ".join(analysis["signals"]),
     }
-    return {target: values[source] for target, source in contract["field_map"].items()}
+    return {
+        target: values[source] for target, source in contract["field_map"].items()
+        if source != "recommended_status" or values[source] != "no_change"
+    }
 
 
 def _evidence_summary(analysis):
