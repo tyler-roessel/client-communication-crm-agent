@@ -108,7 +108,11 @@ def test_integration_plan_maps_notes_to_crm_gong_and_database_payloads():
     )
     analysis = analyze_threads(communications)
 
-    plan = build_integration_plan(analysis, communications)
+    plan = build_integration_plan(
+        analysis, communications,
+        requested_systems=["salesforce", "hubspot", "gong", "warehouse"],
+        account_id="synthetic-account",
+    )
 
     destination_names = [item["destination"] for item in plan["writes"]]
     assert "salesforce" in destination_names
@@ -130,7 +134,12 @@ def test_system_name_normalization_and_integration_render():
             [{"source": "call", "speaker": "Client", "body": "Ready for proposal after pricing."}]
         )
     )
-    rendered = render_integration_plan(build_integration_plan(analysis, []))
+    communications = normalize_communications(
+        [{"source": "call", "speaker": "Client", "body": "Ready for proposal after pricing."}]
+    )
+    rendered = render_integration_plan(build_integration_plan(
+        analysis, communications, ["salesforce"], account_id="synthetic-account",
+    ))
 
     assert "# Integration Routing Plan" in rendered
     assert "salesforce" in rendered

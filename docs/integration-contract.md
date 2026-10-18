@@ -42,12 +42,14 @@ System names are normalized before routing:
 - Objects use `singular_snake_case`.
 - Internal fields use `snake_case`.
 - CRM status values use `snake_case`.
-- External IDs use `client_slug:communication_date:source`.
+- Recommendation IDs hash an account ID and sorted source-event identities. They identify a recommendation batch, not a vendor account, deal, opportunity, or call record.
 - Handoff keys use `team.reason.status`.
 
 ## Write Mode
 
-The public demo uses `recommendation_only`. It builds payloads a writer could use, but does not write to Salesforce, HubSpot, Attio, Gong, or any database.
+The public demo uses `recommendation_only` and marks plans `adapter_only`. Mappings are illustrative, not validated vendor API requests. Target-record resolution and live writes are unimplemented.
+
+Each input should carry `account_id` and an immutable `communication_id`. A caller may supply one explicit batch account ID for legacy inputs. Missing identity or no actionable signal yields no mapping. Mixed-account batches are rejected.
 
 That boundary matters: a reviewer can see the payload contract without granting credentials or trusting hidden side effects.
 

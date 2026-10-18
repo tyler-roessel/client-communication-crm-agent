@@ -5,7 +5,8 @@ def render_action_brief(analysis):
     lines = [
         "# Client Communication Action Brief",
         "",
-        "## Bottom Line",
+        "## Review summary",
+        "- Analysis: deterministic rules; human review required.",
         f"- Recommended CRM status: `{analysis['crm']['recommended_status']}`.",
         f"- Write mode: `{analysis['crm']['write_mode']}` until a human or approved automation commits the change.",
         "",
@@ -57,12 +58,15 @@ def render_integration_plan(plan):
     lines = [
         "# Integration Routing Plan",
         "",
+        "Illustrative mappings only. No vendor requests are executed.",
+        f"Hold reason: {plan.get('hold_reason') or 'none; mapping preview only'}.",
+        "",
         "## Naming Conventions",
     ]
     for key, value in plan["naming_conventions"].items():
         lines.append(f"- `{key}`: `{value}`")
 
-    lines.extend(["", "## Planned Writes"])
+    lines.extend(["", "## Mapping Previews"])
     for write in plan["writes"]:
         lines.append(f"- `{write['destination']}` `{write['operation']}` `{write['object']}`")
         lines.append(f"  - external_id: `{write['external_id']}`")

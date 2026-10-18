@@ -2,6 +2,21 @@
 
 This repo is a public reference version of a private AI workflow. It preserves the real workflow shape, data mapping, handoff logic, CRM recommendation pattern, and implementation lessons while using synthetic examples instead of private client data, credentials, schemas, transcripts, or customer details.
 
+## Executable Scope
+
+The public code uses deterministic rules and local JSON. It makes no model calls, consumes no live calls or email, and executes no CRM requests.
+
+- Whole-word, clause-scoped rules recognize explicit requests and concerns. Negated requests and common resolution phrases are suppressed.
+- Recommendations retain source evidence and require review. No actionable signal means no stage-change recommendation.
+- Mapping previews require one explicit account identity. Missing identity holds the plan; mixed accounts are rejected.
+- Recommendation IDs hash account identity and sorted source-event identities. Reordering input preserves IDs; different accounts or source IDs produce different IDs.
+- Supply immutable `communication_id` values. Content fallback cannot distinguish identical source events.
+- Adapters illustrate mappings. Vendor field names, status labels, and target-record resolution still require validation.
+
+Use Python 3.10+ and install pytest with `python3 -m pip install pytest`. Preview one adapter with `python3 -m src.client_ops.cli --mode integrations --destination salesforce`. Defaults are generic CRM and warehouse, plus a call-note mapping when applicable. No destination is contacted.
+
+The rules do not reliably infer sarcasm, complex negation, temporal changes across messages, or buying intent. Human review and broader evaluation remain necessary.
+
 ## What This Demonstrates
 
 - Turning client calls, emails, and meeting notes into action-ready operating notes.
