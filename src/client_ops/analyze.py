@@ -6,8 +6,8 @@ from .context import source_digest
 
 CLAUSE_SPLIT = re.compile(
     r"[.!?;]+|\b(?:but|however)\b|"
-    r",\s*(?:and\s+)?(?=(?:please|we|they|i|need|needs|waiting|api|sso|integration)\b)|"
-    r"\band\s+(?=(?:please|we|they|i|need|needs|waiting|api|sso|integration)\b)",
+    r",\s*(?:and\s+)?(?=(?:(?:still|also)\s+)?(?:please|we|they|i|need|needs|want|wants|waiting|api|sso|integration)\b)|"
+    r"\band\s+(?=(?:(?:still|also)\s+)?(?:please|we|they|i|need|needs|want|wants|waiting|api|sso|integration)\b)",
     re.IGNORECASE,
 )
 
@@ -82,6 +82,10 @@ def _is_active_signal(clause, signal, keywords):
     if not matches:
         return False
     if signal == "technical_blocker":
+        text = re.sub(
+            r"\b(?:(?:not|never|isn't|wasn't|aren't)(?:\s+yet)?|(?:hasn't|has not|haven't|have not)\s+been)\s+(?:resolved|fixed|complete(?:d)?)\b",
+            "unresolved", text,
+        )
         if re.search(r"\b(no longer (?:blocked|stuck|waiting)|not blocked|unblocked|resolved|fixed|complete(?:d)?|no (?:remaining )?blockers?)\b", text):
             return False
         if re.search(r"\b(?:no|don't|doesn't|do not|does not)\s+(?:need\s+)?(?:new\s+)?(?:api|integration|sso|data mapping)\b|\b(?:api|integration|sso|data mapping)\s+(?:is\s+)?not\s+(?:needed|required)\b", text):

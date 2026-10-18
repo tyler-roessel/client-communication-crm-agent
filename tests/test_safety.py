@@ -3,6 +3,7 @@ import pytest
 from src.client_ops.analyze import analyze_threads
 from src.client_ops.integrations import build_integration_plan
 from src.client_ops.normalize import normalize_communications
+from src.client_ops.render import render_crm_updates, render_integration_plan
 
 
 def communications(text, account="account-a", event="event-1"):
@@ -41,6 +42,12 @@ def test_resolved_clause_does_not_hide_a_separate_active_request():
 def test_resolution_and_negation_do_not_hide_independent_requests():
     assert analyze_threads(communications("SSO is resolved, and API mapping is blocked"))["signals"] == ["technical_blocker"]
     assert analyze_threads(communications("We don't need a proposal, please send pricing"))["signals"] == ["proposal_requested"]
+    assert analyze_threads(communications("We don't need a proposal and want pricing"))["signals"] == ["proposal_requested"]
+
+
+@pytest.mark.parametrize("text", ["SSO is not resolved.", "SSO isn't resolved.", "SSO has not been fixed."])
+def test_negated_resolution_remains_an_open_technical_issue(text):
+    assert analyze_threads(communications(text))["signals"] == ["technical_blocker"]
 
 
 def test_non_stage_signals_never_map_no_change_into_a_status_field():
@@ -50,6 +57,10 @@ def test_non_stage_signals_never_map_no_change_into_a_status_field():
     for write in plan["writes"]:
         assert "no_change" not in write["payload"].values()
         assert "recommended_status" not in write["field_map"].values()
+    output = render_crm_updates(analyze_threads(items))
+    assert "leave the current CRM stage unchanged" in output
+    assert "no_change" not in output
+    assert "account-a" in render_integration_plan(plan)
 
 
 def test_analysis_from_another_account_cannot_be_attached_to_this_account():
