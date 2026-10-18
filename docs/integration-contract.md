@@ -35,7 +35,7 @@ System names are normalized before routing:
 | Attio | `company` | `upsert` | Client status, next action, last signal |
 | Generic CRM | `account` | `upsert` | Portable CRM example |
 | Gong | `call_transcript` | `attach_note` | Call summary and follow-up items |
-| Warehouse | `client_communication_event` | `insert` | Durable analytics/audit trail |
+| Warehouse | `client_communication_review_batch` | `upsert` | Review batch containing all source records |
 
 ## Naming Conventions
 
@@ -43,6 +43,8 @@ System names are normalized before routing:
 - Internal fields use `snake_case`.
 - CRM status values use `snake_case`.
 - Recommendation IDs hash an account ID and sorted source-event identities. They identify a recommendation batch, not a vendor account, deal, opportunity, or call record.
+- Adapter `id_field` values identify the local recommendation batch. Vendor target-record resolution is a separate, unimplemented requirement.
+- Single-record display fields use the latest timezone-aware timestamp. Undated records use a stable fallback. The warehouse preview includes every source record in the batch.
 - Handoff keys use `team.reason.status`.
 
 ## Write Mode

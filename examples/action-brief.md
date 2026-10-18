@@ -9,13 +9,13 @@
 - sales: Clarify pricing, package next step, and send proposal-ready summary.
   Evidence: We are ready for proposal if pricing is clarified and the rollout plan is concrete
 - engineering: Confirm technical owner, unblock requirements, and define integration path.
-  Evidence: The integration is blocked until we understand the SSO
+  Evidence: The integration is blocked until we understand the SSO and API mapping requirements
 - marketing: Attach relevant proof, case study, or reference narrative.
-  Evidence: They asked for customer proof, launch messaging support, and a clearer onboarding handoff
-- marketing: Prepare launch/messaging support and assign content owner.
   Evidence: They asked for customer proof, launch messaging support, and a clearer onboarding handoff
 - customer_success: Convert feedback into onboarding improvement and client-facing recovery note.
   Evidence: Feedback: the first onboarding pass felt too generic for how our team actually works
+- marketing: Prepare launch/messaging support and assign content owner.
+  Evidence: They asked for customer proof, launch messaging support, and a clearer onboarding handoff
 
 ## Team Handoffs
 - sales

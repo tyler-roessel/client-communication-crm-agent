@@ -14,17 +14,17 @@ Hold reason: none; mapping preview only.
 - `generic_crm` `upsert` `account`
   - account_id: `synthetic-client-001`
   - external_id: `recommendation:09d0aac6ce08e8bf02a72debb21a039ce628105b584288947c781044e948cfb2`
-  - id_field: `external_account_key`
+  - id_field: `recommendation_batch_id`
   - fields: client_status, next_step, last_signal
-- `warehouse` `insert` `client_communication_event`
+- `warehouse` `upsert` `client_communication_review_batch`
   - account_id: `synthetic-client-001`
   - external_id: `recommendation:09d0aac6ce08e8bf02a72debb21a039ce628105b584288947c781044e948cfb2`
-  - id_field: `event_external_id`
-  - fields: source, speaker, text, detected_signals, recommended_status
+  - id_field: `recommendation_batch_id`
+  - fields: communications, detected_signals, recommended_status
 - `gong` `attach_note` `call_transcript`
   - account_id: `synthetic-client-001`
   - external_id: `recommendation:09d0aac6ce08e8bf02a72debb21a039ce628105b584288947c781044e948cfb2`
-  - id_field: `call_external_id`
+  - id_field: `recommendation_batch_id`
   - fields: call_summary, follow_up_items, crm_status_recommendation
 
 ## Review Gate

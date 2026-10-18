@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from .context import source_digest
+from .context import communication_sort_key, source_digest
 
 
 SYSTEM_ALIASES = {
@@ -31,7 +31,7 @@ DESTINATION_CONTRACTS = {
     "salesforce": {
         "object": "opportunity",
         "operation": "upsert",
-        "id_field": "external_account_key",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "StageName": "recommended_status",
             "NextStep": "next_step_summary",
@@ -41,7 +41,7 @@ DESTINATION_CONTRACTS = {
     "hubspot": {
         "object": "deal",
         "operation": "upsert",
-        "id_field": "external_account_key",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "dealstage": "recommended_status",
             "next_step": "next_step_summary",
@@ -51,7 +51,7 @@ DESTINATION_CONTRACTS = {
     "attio": {
         "object": "company",
         "operation": "upsert",
-        "id_field": "external_account_key",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "client_status": "recommended_status",
             "next_action": "next_step_summary",
@@ -61,7 +61,7 @@ DESTINATION_CONTRACTS = {
     "generic_crm": {
         "object": "account",
         "operation": "upsert",
-        "id_field": "external_account_key",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "client_status": "recommended_status",
             "next_step": "next_step_summary",
@@ -71,7 +71,7 @@ DESTINATION_CONTRACTS = {
     "gong": {
         "object": "call_transcript",
         "operation": "attach_note",
-        "id_field": "call_external_id",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "call_summary": "evidence_summary",
             "follow_up_items": "next_step_summary",
@@ -79,13 +79,11 @@ DESTINATION_CONTRACTS = {
         },
     },
     "warehouse": {
-        "object": "client_communication_event",
-        "operation": "insert",
-        "id_field": "event_external_id",
+        "object": "client_communication_review_batch",
+        "operation": "upsert",
+        "id_field": "recommendation_batch_id",
         "field_map": {
-            "source": "source",
-            "speaker": "speaker",
-            "text": "text",
+            "communications": "communications",
             "detected_signals": "signals",
             "recommended_status": "recommended_status",
         },
@@ -115,9 +113,7 @@ def build_integration_plan(analysis, communications, requested_systems=None, *, 
         bool(account_id) or all(item.get("account_id") == selected_account for item in communications)
     )
     systems = requested_systems if requested_systems is not None else _infer_destinations(analysis, communications)
-    communications = sorted(communications, key=lambda item: tuple(
-        item.get(key, "") for key in ("timestamp", "communication_id", "source", "speaker", "text")
-    ))
+    communications = sorted(communications, key=communication_sort_key, reverse=True)
     writes = []
     seen_systems = set()
     for system in systems:
@@ -180,6 +176,7 @@ def _payload_for(contract, analysis, communications):
         "speaker": first["speaker"],
         "text": first["text"],
         "signals": ", ".join(analysis["signals"]),
+        "communications": communications,
     }
     return {
         target: values[source] for target, source in contract["field_map"].items()

@@ -43,6 +43,22 @@ def test_resolution_and_negation_do_not_hide_independent_requests():
     assert analyze_threads(communications("SSO is resolved, and API mapping is blocked"))["signals"] == ["technical_blocker"]
     assert analyze_threads(communications("We don't need a proposal, please send pricing"))["signals"] == ["proposal_requested"]
     assert analyze_threads(communications("We don't need a proposal and want pricing"))["signals"] == ["proposal_requested"]
+    assert analyze_threads(communications("We are blocked, and API mapping is the cause"))["signals"] == ["technical_blocker"]
+
+
+def test_latest_evidence_uses_the_actual_instant_and_warehouse_keeps_all_sources():
+    items = normalize_communications([
+        {"account_id": "a", "communication_id": "old", "source": "email", "timestamp": "2026-10-18T12:00:00Z", "body": "Please send pricing for the older plan."},
+        {"account_id": "a", "communication_id": "new", "source": "email", "timestamp": "2026-10-18T09:00:00-04:00", "body": "Please send pricing for the newer plan."},
+    ])
+    analysis = analyze_threads(items)
+    assert "newer" in analysis["evidence"]["proposal_requested"][0]
+    plan = build_integration_plan(analysis, items, ["generic_crm", "warehouse"])
+    assert "newer" in plan["writes"][0]["payload"]["last_signal"]
+    warehouse = plan["writes"][1]
+    assert warehouse["object"] == "client_communication_review_batch"
+    assert warehouse["operation"] == "upsert"
+    assert {item["communication_id"] for item in warehouse["payload"]["communications"]} == {"old", "new"}
 
 
 @pytest.mark.parametrize("text", ["SSO is not resolved.", "SSO isn't resolved.", "SSO has not been fixed."])

@@ -1,13 +1,16 @@
 """Conservative rules for a local reference sample; no model inference occurs."""
 
 import re
-from .context import source_digest
+from .context import communication_sort_key, source_digest
 
 
+INDEPENDENT_START = (
+    r"(?:(?:still|also)\s+)?(?:please|we|they|i|need|needs|want|wants|waiting)\b|"
+    r"(?:api|sso|integration)\b(?=[^.!?;]*\b(?:blocked|blocker|unresolved|resolved|need|needs|issue|problem|error)\b)"
+)
 CLAUSE_SPLIT = re.compile(
     r"[.!?;]+|\b(?:but|however)\b|"
-    r",\s*(?:and\s+)?(?=(?:(?:still|also)\s+)?(?:please|we|they|i|need|needs|want|wants|waiting|api|sso|integration)\b)|"
-    r"\band\s+(?=(?:(?:still|also)\s+)?(?:please|we|they|i|need|needs|want|wants|waiting|api|sso|integration)\b)",
+    rf",\s*(?:and\s+)?(?={INDEPENDENT_START})|\band\s+(?={INDEPENDENT_START})",
     re.IGNORECASE,
 )
 
@@ -44,9 +47,7 @@ def analyze_threads(communications):
     signals = []
     evidence_by_signal = {}
 
-    for item in sorted(communications, key=lambda item: tuple(
-        item.get(key, "") for key in ("timestamp", "communication_id", "source", "speaker", "text")
-    )):
+    for item in sorted(communications, key=communication_sort_key, reverse=True):
         for clause in CLAUSE_SPLIT.split(item["text"]):
             clause = clause.strip()
             if not clause:
@@ -57,6 +58,7 @@ def analyze_threads(communications):
                         signals.append(signal)
                     evidence_by_signal.setdefault(signal, []).append(clause)
 
+    signals = [signal for signal in SIGNAL_RULES if signal in evidence_by_signal]
     actions = [_action_for_signal(signal, evidence_by_signal[signal][0]) for signal in signals]
     handoffs = [_handoff_for_signal(signal, evidence_by_signal[signal][0]) for signal in signals]
     feedback_loop = _feedback_loop(signals, evidence_by_signal)
