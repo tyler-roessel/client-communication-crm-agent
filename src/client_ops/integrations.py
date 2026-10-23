@@ -1,3 +1,10 @@
+"""Build illustrative mapping plans only; these are not vendor API requests."""
+
+import hashlib
+import json
+from .context import communication_sort_key, source_digest
+
+
 SYSTEM_ALIASES = {
     "sales force": "salesforce",
     "salesforce": "salesforce",
@@ -16,7 +23,7 @@ NAMING_CONVENTIONS = {
     "objects": "singular_snake_case",
     "fields": "snake_case",
     "crm_status": "snake_case",
-    "external_id": "client_slug:communication_date:source",
+    "external_id": "sha256(account_id + canonical communication identities)",
     "handoff_keys": "team.reason.status",
 }
 
@@ -24,7 +31,7 @@ DESTINATION_CONTRACTS = {
     "salesforce": {
         "object": "opportunity",
         "operation": "upsert",
-        "id_field": "external_account_key",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "StageName": "recommended_status",
             "NextStep": "next_step_summary",
@@ -34,7 +41,7 @@ DESTINATION_CONTRACTS = {
     "hubspot": {
         "object": "deal",
         "operation": "upsert",
-        "id_field": "external_account_key",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "dealstage": "recommended_status",
             "next_step": "next_step_summary",
@@ -44,7 +51,7 @@ DESTINATION_CONTRACTS = {
     "attio": {
         "object": "company",
         "operation": "upsert",
-        "id_field": "external_account_key",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "client_status": "recommended_status",
             "next_action": "next_step_summary",
@@ -54,7 +61,7 @@ DESTINATION_CONTRACTS = {
     "generic_crm": {
         "object": "account",
         "operation": "upsert",
-        "id_field": "external_account_key",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "client_status": "recommended_status",
             "next_step": "next_step_summary",
@@ -64,7 +71,7 @@ DESTINATION_CONTRACTS = {
     "gong": {
         "object": "call_transcript",
         "operation": "attach_note",
-        "id_field": "call_external_id",
+        "id_field": "recommendation_batch_id",
         "field_map": {
             "call_summary": "evidence_summary",
             "follow_up_items": "next_step_summary",
@@ -72,13 +79,11 @@ DESTINATION_CONTRACTS = {
         },
     },
     "warehouse": {
-        "object": "client_communication_event",
-        "operation": "insert",
-        "id_field": "event_external_id",
+        "object": "client_communication_review_batch",
+        "operation": "upsert",
+        "id_field": "recommendation_batch_id",
         "field_map": {
-            "source": "source",
-            "speaker": "speaker",
-            "text": "text",
+            "communications": "communications",
             "detected_signals": "signals",
             "recommended_status": "recommended_status",
         },
@@ -90,40 +95,72 @@ def normalize_system_name(name):
     return SYSTEM_ALIASES.get(name.strip().lower(), name.strip().lower().replace(" ", "_"))
 
 
-def build_integration_plan(analysis, communications, requested_systems=None):
-    systems = requested_systems or _infer_destinations(analysis, communications)
+def build_integration_plan(analysis, communications, requested_systems=None, *, account_id=None):
+    if analysis.get("source_digest") != source_digest(communications):
+        raise ValueError("analysis does not match the supplied source records")
+    if account_id is not None and (not isinstance(account_id, str) or not account_id.strip()):
+        raise ValueError("account_id must be a non-empty string")
+    supplied_ids = {item["account_id"] for item in communications if item.get("account_id")}
+    if account_id:
+        supplied_ids.add(account_id)
+    if len(supplied_ids) > 1:
+        raise ValueError("one integration plan must contain exactly one account")
+    selected_account = next(iter(supplied_ids), None)
+    if selected_account and (not isinstance(selected_account, str) or not selected_account.strip()):
+        raise ValueError("account_id must be a non-empty string")
+    # An explicit batch-level ID can supply identity for legacy inputs.
+    identity_complete = bool(selected_account) and (
+        bool(account_id) or all(item.get("account_id") == selected_account for item in communications)
+    )
+    systems = requested_systems if requested_systems is not None else _infer_destinations(analysis, communications)
+    communications = sorted(communications, key=communication_sort_key, reverse=True)
     writes = []
+    seen_systems = set()
     for system in systems:
         normalized = normalize_system_name(system)
+        if normalized not in DESTINATION_CONTRACTS:
+            raise ValueError(f"unsupported destination: {system}")
+        if normalized in seen_systems:
+            continue
+        seen_systems.add(normalized)
         contract = DESTINATION_CONTRACTS[normalized]
-        writes.append(_build_write(normalized, contract, analysis, communications))
+        if identity_complete and communications and analysis["signals"]:
+            writes.append(_build_write(normalized, contract, analysis, communications, selected_account))
 
     return {
         "naming_conventions": NAMING_CONVENTIONS,
         "writes": writes,
+        "adapter_only": True,
+        "hold_reason": (
+            "missing_account_identity" if not identity_complete else
+            "no_communications" if not communications else
+            "no_actionable_signals" if not analysis["signals"] else None
+        ),
         "review_gate": {
             "mode": "recommendation_only",
-            "required_before_write": ["human_approval", "valid_external_id", "evidence_present"],
+            "required_before_write": ["human_approval", "valid_external_id", "evidence_present", "vendor_schema_validation", "explicit_target_record"],
         },
     }
 
 
 def _infer_destinations(analysis, communications):
-    destinations = ["salesforce", "hubspot", "attio", "generic_crm", "warehouse"]
+    destinations = ["generic_crm", "warehouse"]
     if any(item["source"] == "call" for item in communications):
         destinations.append("gong")
     return destinations
 
 
-def _build_write(system, contract, analysis, communications):
+def _build_write(system, contract, analysis, communications, account_id):
+    payload = _payload_for(contract, analysis, communications)
     return {
         "destination": system,
         "object": contract["object"],
         "operation": contract["operation"],
         "id_field": contract["id_field"],
-        "external_id": _external_id(communications),
-        "field_map": contract["field_map"],
-        "payload": _payload_for(contract, analysis, communications),
+        "account_id": account_id,
+        "external_id": _external_id(communications, account_id=account_id),
+        "field_map": {target: source for target, source in contract["field_map"].items() if target in payload},
+        "payload": payload,
     }
 
 
@@ -139,8 +176,12 @@ def _payload_for(contract, analysis, communications):
         "speaker": first["speaker"],
         "text": first["text"],
         "signals": ", ".join(analysis["signals"]),
+        "communications": communications,
     }
-    return {target: values[source] for target, source in contract["field_map"].items()}
+    return {
+        target: values[source] for target, source in contract["field_map"].items()
+        if source != "recommended_status" or values[source] != "no_change"
+    }
 
 
 def _evidence_summary(analysis):
@@ -150,10 +191,20 @@ def _evidence_summary(analysis):
     return " | ".join(lines)
 
 
-def _external_id(communications):
-    if not communications:
-        return "demo-client:unknown-date:generated"
-    first = communications[0]
-    date = first.get("timestamp", "")[:10] or "unknown-date"
-    source = first.get("source", "unknown")
-    return f"demo-client:{date}:{source}"
+def _external_id(communications, *, account_id):
+    """Stable recommendation ID, not an account, opportunity, or vendor record ID."""
+    if not communications or not account_id:
+        raise ValueError("account identity and communications are required")
+    identities = []
+    for item in communications:
+        identity = {"source": item["source"]}
+        if item.get("communication_id"):
+            identity["communication_id"] = item["communication_id"]
+        else:
+            identity.update({key: item.get(key, "") for key in ("timestamp", "speaker", "text")})
+        identities.append(json.dumps(identity, sort_keys=True, ensure_ascii=False))
+    canonical = json.dumps(
+        {"account_id": account_id, "communications": sorted(set(identities))},
+        sort_keys=True, ensure_ascii=False,
+    )
+    return "recommendation:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()

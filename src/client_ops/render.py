@@ -5,8 +5,11 @@ def render_action_brief(analysis):
     lines = [
         "# Client Communication Action Brief",
         "",
-        "## Bottom Line",
-        f"- Recommended CRM status: `{analysis['crm']['recommended_status']}`.",
+        "## Review summary",
+        "- Analysis: deterministic rules; human review required.",
+        ("- CRM stage: leave the current stage unchanged."
+         if analysis["crm"]["recommended_status"] == "no_change"
+         else f"- Recommended CRM status: `{analysis['crm']['recommended_status']}`."),
         f"- Write mode: `{analysis['crm']['write_mode']}` until a human or approved automation commits the change.",
         "",
         "## Next Steps",
@@ -40,14 +43,18 @@ def render_crm_updates(analysis):
     lines = [
         "# CRM Status Change Recommendations",
         "",
-        f"- Recommended status: `{crm['recommended_status']}`",
+        ("- Stage decision: leave the current CRM stage unchanged."
+         if crm["recommended_status"] == "no_change"
+         else f"- Recommended status: `{crm['recommended_status']}`"),
         f"- Reason: {crm['reason']}",
         f"- Write mode: `{crm['write_mode']}`",
         "",
         "## Field Mapping",
         "- `last_client_signal`: strongest evidence line from the latest call/email/note.",
         "- `next_step_owner_team`: team responsible for the next action.",
-        "- `client_status`: recommended stage/status after review.",
+        ("- Omit `client_status` and all vendor stage fields for this recommendation."
+         if crm["recommended_status"] == "no_change"
+         else "- `client_status`: recommended stage/status after review."),
         "- `feedback_loop_notes`: reusable process improvements learned from the interaction.",
     ]
     return "\n".join(lines) + "\n"
@@ -57,14 +64,18 @@ def render_integration_plan(plan):
     lines = [
         "# Integration Routing Plan",
         "",
+        "Illustrative mappings only. No vendor requests are executed.",
+        f"Hold reason: {plan.get('hold_reason') or 'none; mapping preview only'}.",
+        "",
         "## Naming Conventions",
     ]
     for key, value in plan["naming_conventions"].items():
         lines.append(f"- `{key}`: `{value}`")
 
-    lines.extend(["", "## Planned Writes"])
+    lines.extend(["", "## Mapping Previews"])
     for write in plan["writes"]:
         lines.append(f"- `{write['destination']}` `{write['operation']}` `{write['object']}`")
+        lines.append(f"  - account_id: `{write['account_id']}`")
         lines.append(f"  - external_id: `{write['external_id']}`")
         lines.append(f"  - id_field: `{write['id_field']}`")
         lines.append(f"  - fields: {', '.join(write['payload'].keys())}")

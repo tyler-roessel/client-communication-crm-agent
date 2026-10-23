@@ -1,3 +1,20 @@
+"""Conservative rules for a local reference sample; no model inference occurs."""
+
+import re
+from .context import communication_sort_key, source_digest
+
+
+INDEPENDENT_START = (
+    r"(?:(?:still|also)\s+)?(?:please|we|they|i|need|needs|want|wants|waiting)\b|"
+    r"(?:api|sso|integration)\b(?=[^.!?;]*\b(?:blocked|blocker|unresolved|resolved|need|needs|issue|problem|error)\b)"
+)
+CLAUSE_SPLIT = re.compile(
+    r"[.!?;]+|\b(?:but|however)\b|"
+    rf",\s*(?:and\s+)?(?={INDEPENDENT_START})|\band\s+(?={INDEPENDENT_START})",
+    re.IGNORECASE,
+)
+
+
 SIGNAL_RULES = {
     "proposal_requested": ("proposal", "pricing", "commercial terms", "ready to move"),
     "technical_blocker": ("blocked", "blocker", "api", "integration", "sso", "data mapping"),
@@ -24,17 +41,24 @@ REASON_BY_SIGNAL = {
 
 
 def analyze_threads(communications):
+    account_ids = {item["account_id"] for item in communications if item.get("account_id")}
+    if len(account_ids) > 1:
+        raise ValueError("one analysis must contain exactly one account")
     signals = []
     evidence_by_signal = {}
 
-    for item in communications:
-        text = item["text"].lower()
-        for signal, keywords in SIGNAL_RULES.items():
-            if any(keyword in text for keyword in keywords):
-                if signal not in signals:
-                    signals.append(signal)
-                evidence_by_signal.setdefault(signal, []).append(item["text"])
+    for item in sorted(communications, key=communication_sort_key, reverse=True):
+        for clause in CLAUSE_SPLIT.split(item["text"]):
+            clause = clause.strip()
+            if not clause:
+                continue
+            for signal, keywords in SIGNAL_RULES.items():
+                if _is_active_signal(clause, signal, keywords):
+                    if signal not in signals:
+                        signals.append(signal)
+                    evidence_by_signal.setdefault(signal, []).append(clause)
 
+    signals = [signal for signal in SIGNAL_RULES if signal in evidence_by_signal]
     actions = [_action_for_signal(signal, evidence_by_signal[signal][0]) for signal in signals]
     handoffs = [_handoff_for_signal(signal, evidence_by_signal[signal][0]) for signal in signals]
     feedback_loop = _feedback_loop(signals, evidence_by_signal)
@@ -47,7 +71,41 @@ def analyze_threads(communications):
         "feedback_loop": feedback_loop,
         "crm": crm,
         "evidence": evidence_by_signal,
+        "analysis_method": "deterministic_rules",
+        "needs_human_review": True,
+        "account_id": next(iter(account_ids), None),
+        "source_digest": source_digest(communications),
     }
+
+
+def _is_active_signal(clause, signal, keywords):
+    text = clause.lower().replace("’", "'")
+    matches = list(re.finditer(r"\b(?:" + "|".join(re.escape(word) for word in keywords) + r")\b", text))
+    if not matches:
+        return False
+    if signal == "technical_blocker":
+        text = re.sub(
+            r"\b(?:(?:not|never|isn't|wasn't|aren't)(?:\s+yet)?|(?:hasn't|has not|haven't|have not)\s+been)\s+(?:resolved|fixed|complete(?:d)?)\b",
+            "unresolved", text,
+        )
+        if re.search(r"\b(no longer (?:blocked|stuck|waiting)|not blocked|unblocked|resolved|fixed|complete(?:d)?|no (?:remaining )?blockers?)\b", text):
+            return False
+        if re.search(r"\b(?:no|don't|doesn't|do not|does not)\s+(?:need\s+)?(?:new\s+)?(?:api|integration|sso|data mapping)\b|\b(?:api|integration|sso|data mapping)\s+(?:is\s+)?not\s+(?:needed|required)\b", text):
+            return False
+        technical_topic = re.search(r"\b(api|integration|sso|data mapping|technical)\b", text)
+        open_concern = re.search(r"\b(blocked|blocker|unclear|unresolved|waiting|cannot|can't|need|needs|required|requirements|issue|problem|error)\b", text)
+        return bool(technical_topic and open_concern)
+    # Negation is scoped to a clause and must precede the matched topic.
+    active = [
+        match for match in matches
+        if not re.search(r"\b(no|not|never|without|don't|doesn't|didn't|won't|no longer)\b", text[:match.start()])
+    ]
+    if not active:
+        return False
+    request = re.search(r"\b(need|needs|want|wants|request|requested|send|share|ready|clarified|clarify|please|asked|discuss|waiting)\b|\b(?:can|could) you\b", text)
+    if signal == "onboarding_feedback":
+        return bool(re.search(r"\b(feedback|confusing|generic|friction|problem)\b", text))
+    return bool(request)
 
 
 def _action_for_signal(signal, evidence):
@@ -97,8 +155,8 @@ def _crm_recommendation(signals):
         status = "proof_requested"
         reason = "Client needs confidence material before advancing."
     else:
-        status = "active_follow_up"
-        reason = "There is communication activity but no closing-stage trigger."
+        status = "no_change"
+        reason = "No supported stage-change signal; review the source before updating CRM."
 
     return {
         "recommended_status": status,
